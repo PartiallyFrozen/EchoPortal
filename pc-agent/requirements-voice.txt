@@ -5,4 +5,4 @@
 # downloaded on first use into the Hugging Face cache, not shipped with the installer.
 
 -r requirements.txt
-faster-whisper>=1.0
+faster-whisper>=1.2.1
