@@ -3,7 +3,7 @@
 
 websockets>=12.0        # the hub the Spot connects to
 aiohttp>=3.9            # media server, ComfyUI and weather HTTP
-psutil>=5.9             # CPU, memory, disks, processes
+psutil>=7.2.2             # CPU, memory, disks, processes
 pywin32>=306            # performance counters, focused-window typing, clipboard
 nvidia-ml-py>=12.535    # GPU name, temperature, power (import pynvml)
 pystray>=0.19           # system tray icon
