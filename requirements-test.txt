@@ -6,4 +6,4 @@ websockets>=12.0
 aiohttp>=3.9
 psutil>=5.9
 pillow>=10.0
-numpy>=1.26
+numpy>=2.5.3

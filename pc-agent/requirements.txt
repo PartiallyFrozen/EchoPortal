@@ -8,4 +8,4 @@ pywin32>=306            # performance counters, focused-window typing, clipboard
 nvidia-ml-py>=12.535    # GPU name, temperature, power (import pynvml)
 pystray>=0.19           # system tray icon
 pillow>=10.0            # tray icon, thumbnails, weather art crops
-numpy>=1.26             # audio level maths for the voice face
+numpy>=2.5.3             # audio level maths for the voice face
