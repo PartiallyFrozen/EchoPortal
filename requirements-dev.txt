@@ -1,5 +1,5 @@
 # Development and release tooling.
 
-ruff>=0.5
+ruff>=0.16.7
 pytest>=8.0
 pyinstaller>=6.6        # standalone agent build, see packaging/agent.spec
