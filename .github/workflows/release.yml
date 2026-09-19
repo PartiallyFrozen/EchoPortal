@@ -42,7 +42,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Debug-signed on purpose: this is a sideloaded app for a rooted device, and a debug key
       # keeps the release reproducible without a secret. Swap in a release keystore later by
