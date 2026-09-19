@@ -55,7 +55,7 @@ jobs:
         working-directory: rook
         run: ./gradlew --no-daemon assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: EchoPortal-debug-apk
           path: rook/app/build/outputs/apk/debug/*.apk
