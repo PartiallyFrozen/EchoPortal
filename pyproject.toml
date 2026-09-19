@@ -1,0 +1,28 @@
+[project]
+name = "echoportal-agent"
+version = "0.1.0"
+description = "Windows agent that feeds an Echo Spot running the EchoPortal shell"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "EchoPortal contributors" }]
+
+[project.urls]
+Homepage = "https://github.com/PartiallyFrozen/EchoPortal"
+Issues = "https://github.com/PartiallyFrozen/EchoPortal/issues"
+
+[tool.ruff]
+line-length = 170
+target-version = "py312"
+# One-off tooling and vendored device sources are not linted.
+extend-exclude = ["scripts", "spotmon", "libbt", "backup", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# `a = 1; b = 2` is the house style in the drawing and polling code.
+ignore = ["E702"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["pc-agent"]
+addopts = "-q"

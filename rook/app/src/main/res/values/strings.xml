@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EchoPortal</string>
+    <string name="default_server"></string>
+</resources>

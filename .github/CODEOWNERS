@@ -1,0 +1,8 @@
+# Every change needs a review from the owner.
+*                   @PartiallyFrozen
+
+# Area owners, for when there are more of us.
+/rook/              @PartiallyFrozen
+/pc-agent/          @PartiallyFrozen
+/packaging/         @PartiallyFrozen
+/.github/           @PartiallyFrozen

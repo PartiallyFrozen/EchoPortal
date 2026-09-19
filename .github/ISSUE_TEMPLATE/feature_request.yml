@@ -1,0 +1,38 @@
+name: Feature or face request
+description: Suggest something new, or a new face for the ring
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would it do
+      description: Describe it as the person using it would see it on a 480 px round screen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Where does the data come from
+      description: |
+        Faces draw what the agent sends them. Say what the agent would have to read or poll,
+        and whether it needs anything installed (a GPU, ComfyUI, an API key).
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - A new face
+        - A change to an existing face
+        - Shell behaviour (gestures, launcher, sleep, ambient)
+        - Agent or packaging
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: offer
+    attributes:
+      label: Would you like to build it
+      options:
+        - label: I would be happy to open a pull request for this

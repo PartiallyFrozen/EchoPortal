@@ -1,0 +1,9 @@
+# The import-safe subset of the agent's dependencies, for CI on Linux runners.
+# The Windows-only modules (agent, tray, typer, voice) are not imported by the test suite;
+# pywin32, pynvml and pystray are therefore left out here on purpose.
+
+websockets>=12.0
+aiohttp>=3.9
+psutil>=5.9
+pillow>=10.0
+numpy>=1.26

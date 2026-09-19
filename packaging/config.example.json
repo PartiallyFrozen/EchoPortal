@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy to pc-agent/config.json (the agent does this on first run) and edit. Restart the agent from the tray afterwards.",
+
+  "latitude": 0.0,
+  "longitude": 0.0,
+  "timezone": "UTC",
+
+  "comfy_urls": ["http://127.0.0.1:8188", "http://127.0.0.1:8000"],
+
+  "hub_port": 8765,
+  "media_port": 8766,
+  "claude_hook_port": 8767
+}
