@@ -1,7 +1,7 @@
 # EchoPortal agent, runtime dependencies (Windows 10/11, Python 3.12).
 # Voice is optional and lives in requirements-voice.txt.
 
-websockets>=12.0        # the hub the Spot connects to
+websockets>=17.1        # the hub the Spot connects to
 aiohttp>=3.9            # media server, ComfyUI and weather HTTP
 psutil>=5.9             # CPU, memory, disks, processes
 pywin32>=306            # performance counters, focused-window typing, clipboard
