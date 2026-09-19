@@ -3,7 +3,7 @@
 # pywin32, pynvml and pystray are therefore left out here on purpose.
 
 websockets>=12.0
-aiohttp>=3.9
+aiohttp>=3.14.3
 psutil>=5.9
 pillow>=10.0
 numpy>=1.26

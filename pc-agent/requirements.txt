@@ -2,7 +2,7 @@
 # Voice is optional and lives in requirements-voice.txt.
 
 websockets>=12.0        # the hub the Spot connects to
-aiohttp>=3.9            # media server, ComfyUI and weather HTTP
+aiohttp>=3.14.3            # media server, ComfyUI and weather HTTP
 psutil>=5.9             # CPU, memory, disks, processes
 pywin32>=306            # performance counters, focused-window typing, clipboard
 nvidia-ml-py>=12.535    # GPU name, temperature, power (import pynvml)
