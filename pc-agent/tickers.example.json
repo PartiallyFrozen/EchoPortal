@@ -1,0 +1,6 @@
+{
+  "crypto": ["BTC", "ETH"],
+  "stocks": ["NVDA", "AAPL", "MSFT"],
+  "currency": "USD",
+  "interval": 15
+}

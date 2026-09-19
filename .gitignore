@@ -1,0 +1,21 @@
+# build output
+build/
+dist/
+rook/app/build/
+rook/.gradle/
+rook/.idea/
+rook/local.properties
+
+# per-machine agent files
+pc-agent/config.json
+pc-agent/tickers.json
+pc-agent/agent.log
+pc-agent/media/
+pc-agent/*.wav
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/

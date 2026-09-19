@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/PartiallyFrozen/EchoPortal/discussions
+    about: Ask about setup, flashing or hardware here rather than opening an issue.
+  - name: Security issue
+    url: https://github.com/PartiallyFrozen/EchoPortal/security/advisories/new
+    about: Report vulnerabilities privately, not as a public issue.

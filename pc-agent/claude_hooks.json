@@ -1,0 +1,13 @@
+{
+  "_comment": "Merge the 'hooks' object into %USERPROFILE%/.claude/settings.json so Claude Code reports to the Spot's Claude face. Each hook sends one UDP datagram to the EchoPortal agent; it never blocks Claude Code.",
+  "hooks": {
+    "SessionStart":     [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "PreToolUse":       [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "PostToolUse":      [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "Notification":     [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "Stop":             [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "SubagentStop":     [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}],
+    "SessionEnd":       [{"hooks": [{"type": "command", "command": "\"C:\\Users\\mark\\AppData\\Local\\Programs\\Python\\Python312\\python.exe\" -S \"D:\\aiappdev\\EchoSpot\\pc-agent\\claude_hook.py\"", "timeout": 5}]}]
+  }
+}

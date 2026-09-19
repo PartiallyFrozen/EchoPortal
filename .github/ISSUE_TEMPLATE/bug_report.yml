@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in the shell or the agent does not work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please redact your LAN IP and any keys from logs before pasting them.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is it
+      options:
+        - Shell on the device (a face, the ring, gestures)
+        - Agent on the PC (tray, telemetry, voice, ComfyUI)
+        - Installer or release asset
+        - Flashing or device setup
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag, or the commit you built from.
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS
+      placeholder: Echo Spot 1st gen (rook), LineageOS 18.1, Windows 11 24H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Device: `adb logcat -d | grep EchoPortal`
+        Agent: the tail of `agent.log` (tray menu -> Open log)
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: The agent was running and the Spot showed it as connected
+        - label: I can reproduce it after restarting both

@@ -1,0 +1,148 @@
+name: Release
+
+# Tag a version to cut a release:  git tag v0.1.0 && git push origin v0.1.0
+# The release is drafted, not published, so the notes can be edited first.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (without the leading v)"
+        required: true
+        default: "0.0.0-test"
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+  shell:
+    name: Shell APK
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Debug-signed on purpose: this is a sideloaded app for a rooted device, and a debug key
+      # keeps the release reproducible without a secret. Swap in a release keystore later by
+      # adding a signingConfig and the usual four secrets.
+      - name: Build APK
+        working-directory: rook
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Name it after the release
+        run: |
+          mkdir -p out
+          cp rook/app/build/outputs/apk/debug/app-debug.apk \
+             "out/EchoPortal-${{ needs.version.outputs.version }}-debug.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: out/*.apk
+          if-no-files-found: error
+
+  agent:
+    name: Agent installer
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pc-agent/requirements.txt -r requirements-dev.txt
+
+      - name: Build the executable
+        run: pyinstaller --noconfirm packaging/agent.spec
+
+      - name: Smoke test the executable
+        run: |
+          if (-not (Test-Path "dist/EchoPortalAgent/EchoPortalAgent.exe")) { throw "exe missing" }
+          $size = (Get-ChildItem -Recurse dist/EchoPortalAgent | Measure-Object -Property Length -Sum).Sum / 1MB
+          Write-Host ("bundle size: {0:N0} MB" -f $size)
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=${{ needs.version.outputs.version }} packaging\installer.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/installer/*.exe
+          if-no-files-found: error
+
+  draft:
+    name: Draft the release
+    needs: [version, shell, agent]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: assets
+        run: |
+          ls -la
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: EchoPortal ${{ needs.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: assets/*
+          body: |
+            ## Install
+
+            **Agent (Windows 10/11):** `EchoPortal-Agent-Setup-${{ needs.version.outputs.version }}.exe`.
+            Run it, tick "start when I sign in", then set your latitude, longitude and time zone in
+            `config.json` (Start menu → Agent settings) and restart it from the tray.
+
+            **Shell (Echo Spot, 1st gen, on LineageOS 18.1):**
+
+            ```
+            adb install -r EchoPortal-${{ needs.version.outputs.version }}-debug.apk
+            adb shell cmd package set-home-activity com.echoportal/.MainActivity
+            ```
+
+            Then long-press the screen → *PC agent address* → `ws://<your-pc-ip>:8765`.
+
+            The APK is debug-signed, so Android shows the usual sideloading warning. Verify
+            downloads against `SHA256SUMS.txt`. Voice transcription is optional and pulls its model
+            on first use; see the docs.
