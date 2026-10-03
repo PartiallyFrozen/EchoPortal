@@ -7,5 +7,5 @@ psutil>=5.9             # CPU, memory, disks, processes
 pywin32>=306            # performance counters, focused-window typing, clipboard
 nvidia-ml-py>=13.615.71    # GPU name, temperature, power (import pynvml)
 pystray>=0.19           # system tray icon
-pillow>=10.0            # tray icon, thumbnails, weather art crops
+pillow>=12.3.0            # tray icon, thumbnails, weather art crops
 numpy>=1.26             # audio level maths for the voice face
