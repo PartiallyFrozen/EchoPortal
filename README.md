@@ -1,10 +1,17 @@
 # EchoPortal
 
-[![CI](https://github.com/PartiallyFrozen/EchoPortal/actions/workflows/ci.yml/badge.svg)](https://github.com/PartiallyFrozen/EchoPortal/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/PartiallyFrozen/EchoPortal?include_prereleases&sort=semver)](https://github.com/PartiallyFrozen/EchoPortal/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/device-Echo%20Spot%201st%20gen-informational)](docs/HARDWARE.md)
-[![Agent](https://img.shields.io/badge/agent-Windows%2010%2F11-blue)](docs/AGENT.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/PartiallyFrozen/EchoPortal/ci.yml?branch=main&label=CI&logo=github)](https://github.com/PartiallyFrozen/EchoPortal/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/PartiallyFrozen/EchoPortal?color=yellow)](LICENSE)
+[![Device](https://img.shields.io/badge/device-Echo%20Spot%201st%20gen-informational)](docs/HARDWARE.md)
+[![Android](https://img.shields.io/badge/Android-11%20(API%2030)-3DDC84?logo=android&logoColor=white)](docs/FLASHING.md)
+[![Agent](https://img.shields.io/badge/agent-Windows%2010%2F11-0078D4?logo=windows&logoColor=white)](docs/AGENT.md)
+[![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](CONTRIBUTING.md)
+[![Last commit](https://img.shields.io/github/last-commit/PartiallyFrozen/EchoPortal)](https://github.com/PartiallyFrozen/EchoPortal/commits/main)
+
+<!-- Add these two once a release is published (v0.1.0 is still a draft, so they would read "no releases found"):
+[![Release](https://img.shields.io/github/v/release/PartiallyFrozen/EchoPortal?sort=semver)](https://github.com/PartiallyFrozen/EchoPortal/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/PartiallyFrozen/EchoPortal/total)](https://github.com/PartiallyFrozen/EchoPortal/releases)
+-->
 
 Turn a first-generation Amazon Echo Spot into a round, always-on dashboard for your PC.
 
