@@ -20,9 +20,17 @@ DATA_DIR = os.path.dirname(os.path.abspath(sys.executable)) if FROZEN else HERE
 LOG = os.path.join(DATA_DIR, "agent.log")
 STARTUP_DIR = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup")
 STARTUP_FILE = os.path.join(STARTUP_DIR, "EchoPortal Agent.vbs")
+# The installer creates a .lnk with the same name; either one means "start with Windows".
+STARTUP_LNK = os.path.join(STARTUP_DIR, "EchoPortal Agent.lnk")
 
 # pythonw has no stdout/stderr; send the agent's prints to a log file instead
 if sys.stdout is None or sys.stderr is None or not sys.stdout.isatty():
+    # Keep the log from growing without bound on an appliance that runs for months.
+    try:
+        if os.path.getsize(LOG) > 2 * 1024 * 1024:
+            os.replace(LOG, LOG + ".1")
+    except OSError:
+        pass
     _log = open(LOG, "a", buffering=1, encoding="utf-8")
     sys.stdout = sys.stderr = _log
 
@@ -58,17 +66,36 @@ class Runner:
         except Exception as e:  # noqa: BLE001
             print("agent crashed:", repr(e))
         finally:
+            # Withdraw the mDNS record before the loop closes (the tray path never reaches the
+            # __main__ shutdown block).
+            try:
+                agent.discovery.unregister(agent.DISCOVERY)
+            except Exception:  # noqa: BLE001
+                pass
             self.loop.close()
             print("agent stopped")
 
     def stop(self):
-        if not self.running:
+        if not self.running or self.loop is None or self.task is None:
             return
         self.loop.call_soon_threadsafe(self.task.cancel)
         self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            print("tray: agent thread did not stop within 5 s")
 
 
 runner = Runner()
+
+
+def _agent_ws_url() -> str:
+    """Loopback hub URL, carrying the shared token when config.json sets one."""
+    import urllib.parse
+
+    url = "ws://127.0.0.1:%d/" % agent.PORT
+    token = (agent.config.get("api_token", "") or "").strip()
+    if token:
+        url += "?token=" + urllib.parse.quote(token)
+    return url
 
 
 def make_icon(color: str) -> Image.Image:
@@ -114,7 +141,7 @@ def test_banner(_icon, _item):
         import websockets
 
         async def send():
-            async with websockets.connect("ws://127.0.0.1:%d" % agent.PORT) as ws:
+            async with websockets.connect(_agent_ws_url()) as ws:
                 await ws.send(json.dumps({"ch": "notify", "data": {
                     "title": "EchoPortal", "text": "test banner from the tray", "face": "pcmon",
                     "ttl": 8000, "chime": True}}))
@@ -134,12 +161,17 @@ def open_log(_icon, _item):
 
 
 def autostart_enabled(_item=None) -> bool:
-    return os.path.exists(STARTUP_FILE)
+    return os.path.exists(STARTUP_FILE) or os.path.exists(STARTUP_LNK)
 
 
 def toggle_autostart(icon, _item):
     if autostart_enabled():
-        os.remove(STARTUP_FILE)
+        # Remove both forms, so toggling off cannot leave the installer's .lnk behind.
+        for path in (STARTUP_FILE, STARTUP_LNK):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
     else:
         target = f'""{sys.executable}""' if FROZEN else f'""{sys.executable.replace("python.exe", "pythonw.exe")}"" ""{os.path.join(HERE, "tray.py")}""'
         with open(STARTUP_FILE, "w", encoding="utf-8") as f:
@@ -200,7 +232,7 @@ def _tell_agent(data: dict):
     import websockets
 
     async def go():
-        async with websockets.connect("ws://127.0.0.1:8765") as ws:
+        async with websockets.connect(_agent_ws_url()) as ws:
             await ws.send(json.dumps({"ch": "bg", "data": data}))
 
     try:
@@ -269,7 +301,13 @@ def main():
                 return
 
     threading.Thread(target=ticker, daemon=True).start()
-    icon.run()
+    try:
+        icon.run()
+    finally:
+        # Close ADL before the interpreter unloads its DLL; that unload faults.
+        if agent.AMD is not None:
+            agent.AMD.close()
+        os._exit(0)
 
 
 if __name__ == "__main__":

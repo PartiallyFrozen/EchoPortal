@@ -48,3 +48,23 @@ def test_null_values_fall_back_rather_than_returning_none(monkeypatch, tmp_path)
     monkeypatch.setattr(config, "CONFIG", str(path))
     monkeypatch.setattr(config, "VALUES", config._read())
     assert config.get("timezone", "auto") == "auto"
+
+
+def test_a_non_object_config_falls_back_to_defaults(monkeypatch, tmp_path):
+    # Valid JSON that is not an object (a list, string or null) must not crash the import.
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(["not", "settings"]), encoding="utf-8")
+    monkeypatch.setattr(config, "CONFIG", str(path))
+    monkeypatch.setattr(config, "EXAMPLE", str(tmp_path / "missing-example.json"))
+    values = config._read()
+    assert values["hub_port"] == 8765
+    assert values["latitude"] is None
+
+
+def test_a_utf8_bom_does_not_hide_the_config(monkeypatch, tmp_path):
+    # PowerShell's Set-Content -Encoding UTF8 writes a BOM; the agent must still read the file.
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"latitude": 1.5, "longitude": 2.5}), encoding="utf-8-sig")
+    monkeypatch.setattr(config, "CONFIG", str(path))
+    monkeypatch.setattr(config, "VALUES", config._read())
+    assert config.has_location() is True

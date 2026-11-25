@@ -13,6 +13,10 @@ pc-agent/agent.log
 pc-agent/media/
 pc-agent/*.wav
 
+# bundled runtime assets (downloaded/placed locally for packaging)
+packaging/piper/
+packaging/media/
+
 # python
 __pycache__/
 *.pyc

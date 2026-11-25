@@ -137,10 +137,12 @@ class ClaudeMon:
 
 
 def _claude_running() -> bool:
-    try:
-        for p in psutil.process_iter(["name"]):
-            if (p.info["name"] or "").lower() in ("claude.exe", "claude"):
+    # Direct name() calls: process_iter(attrs=...) would overwrite the shared Process.info
+    # that agent.sample() may be reading from another thread.
+    for p in psutil.process_iter():
+        try:
+            if (p.name() or "").lower() in ("claude.exe", "claude"):
                 return True
-    except Exception:  # noqa: BLE001
-        pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
     return False

@@ -11,40 +11,62 @@ Applies only to the **first-generation Echo Spot** (`rook`, model VN94DQ). See
 
 - The Spot, its power supply, and a USB-A to micro-USB data cable.
 - A Windows PC (the unlock tooling is easiest there) or a Linux box.
-- [amonet-rook](https://github.com/chaosmaster/amonet) v2.0.0 or later, the bootrom exploit that
-  unlocks the bootloader.
-- TWRP 3.7.0 for `rook`, and a LineageOS 18.1 `rook` build (userdebug).
+- [amonet-rook v2.0.0](https://xdaforums.com/attachments/amonet-rook-v2-0-0-zip.6374234/) from the
+  [unlock thread](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-spot-2017-rook.4754878/).
+  Downloading the attachment requires an XDA account. Do **not** build this from a source clone:
+  clones omit the compiled payloads. The ZIP includes TWRP and a patched Windows `fastboot.exe`.
+- A [LineageOS 18.1 `rook` build](https://github.com/amazon-oss/releases/releases/tag/lineage-18.1-rook-v0.3).
+  The current asset is `lineage-18.1-20251108-UNOFFICIAL-rook.zip` (SHA-256
+  `2755428c124df88ffd3bc6a9c36db16bbe3b7e639883fd1092dc839ac5ae9d13`).
 - `adb` and `fastboot` from the Android platform-tools.
 
-None of these are redistributed here. Download them from their own projects.
+None of these are redistributed here. Download them from their own projects. On this PC the
+`flash-rook\` folder already contains the verified LineageOS ZIP, the built APK, and four scripts:
+`1-unlock.cmd`, `2-sideload-lineage.cmd`, `3-install-echoportal.cmd`, and `4-verify.cmd`. The staged
+`amonet-rook-v2.0.0.zip` is the real XDA attachment (42,696,815 bytes) and contains the compiled
+payloads.
 
 ## 1. Unlock the bootloader
 
-The MT8163 bootrom accepts commands for a moment at power-on, which is what amonet uses. On
-Windows this needs the MediaTek preloader driver, and Windows will complain that it is unsigned.
+**Risk:** this can permanently brick the device. Use the included power supply and a *data* USB-A to
+micro-USB cable. Do not interrupt the exploit once it starts. Never flash `preloader`, `LK`, `TZ`,
+or `TEE1`.
 
-```bash
-# Spot unplugged. Start the script, then plug the cable in.
-cd amonet-rook
-./fastbrick.bat          # Windows;  ./bootrom-step.sh on Linux
+On stock FireOS, Developer options expose only **Ship Mode**. USB debugging is not available until
+the bootloader is unlocked.
+
+```bat
+:: Extract amonet-rook-v2.0.0.zip next to these docs, then:
+cd amonet
+fastbrick.bat
 ```
 
-The device appears as *MT65xx Preloader* (`VID_0E8D PID_2000`) for about a second at power-on. If
-the script does not see it, unplug, run the script first, then plug in. When it finishes, the Spot
-reboots into an unlocked bootloader.
+The script asks you to put the Spot into fastboot mode:
 
-## 2. Install TWRP and LineageOS
+1. Leave the Spot unplugged from the PC and connected to its AC charger.
+2. Power it off.
+3. Hold **Volume Up + Volume Down + Mute** together until `=> FASTBOOT mode...` appears.
+4. Connect the micro-USB data cable to the PC while still holding the buttons.
+
+The script detects `ROOK`, checks that the bootloader is not already unlocked, picks the payload for
+your FireOS build, and asks for confirmation. Type `YES` exactly. It may take up to five minutes and
+the device will reboot into TWRP when done. If Windows reports error 28 for `VID_0BB4 PID_0C01`,
+install the Kindle Fire driver (staged as `flash-rook\kindle_fire_usb_driver.zip` here). If it shows
+*MT65xx Preloader*, install a WinUSB driver for `VID_0E8D PID_2000` rather than flashing anything.
+
+## 2. Install LineageOS
+
+TWRP is already installed by amonet; there is no separate recovery image to flash.
 
 ```bash
-fastboot flash recovery twrp-3.7.0-rook.img
-fastboot reboot recovery
-
-# In TWRP: Wipe -> Format Data, then
-adb sideload lineage-18.1-rook.zip
+# In TWRP: Wipe -> Advanced Wipe -> Dalvik/ART Cache, System, Data, Cache -> Swipe.
+# Then: Advanced -> ADB Sideload -> swipe to start.
+adb sideload lineage-18.1-20251108-UNOFFICIAL-rook.zip
 ```
 
-Reboot. You now have Android 11 with no Amazon software on it, and a Trebuchet launcher you are
-about to replace.
+Reboot to system. You now have Android 11 with no Amazon software on it, and a Trebuchet launcher
+you are about to replace. On this ROM the **Mute** button is also the power button; hold **Volume
+Up** while applying power to return to TWRP.
 
 ## 3. Turn on ADB over Wi-Fi
 
@@ -75,7 +97,9 @@ adb shell settings put global stay_on_while_plugged_in 3
 adb shell locksettings set-disabled true
 ```
 
-Long-press the screen → *PC agent address* → `ws://<your-pc-ip>:8765`.
+Long-press the screen → *PC agent address* → `ws://<your-pc-ip>:8765`. On this PC,
+`flash-rook\3-install-echoportal.cmd` does all of the above, including writing the `api_token` from
+the installed agent config into the Spot preferences so the token dialog is not needed.
 
 ## 5. Optional: remove the rest of the OS
 

@@ -1,5 +1,8 @@
 # Optional: the voice face (tap to talk, transcribed locally, typed into the focused window).
 #
+# The packaged installer does NOT include this; it uses Gemini instead (see VOICE-GEMINI.md).
+# Install this only for a source install that should transcribe on the PC.
+#
 # faster-whisper pulls in CTranslate2. For GPU transcription you also need CUDA 12 and cuDNN 9 on
 # the PATH; on CPU it works but a sentence takes seconds rather than a moment. The model itself is
 # downloaded on first use into the Hugging Face cache, not shipped with the installer.
