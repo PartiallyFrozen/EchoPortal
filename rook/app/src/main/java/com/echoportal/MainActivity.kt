@@ -94,7 +94,12 @@ class MainActivity : Activity(), ShellView.Host {
         faces.forEach { f ->
             f.requestVideo = { url ->
                 if (url == null) { video.stop(); shell.videoActive = false }
-                else { video.view.post { video.applyCalibration(shell.calDx, shell.calDy, shell.calScale) }; video.play(url); shell.videoActive = true }
+                else {
+                    video.zoom = if (f.id == "videoclock") VideoClockFace.CLOCK_ZOOM else 1f
+                    video.view.post { video.applyCalibration(shell.calDx, shell.calDy, shell.calScale) }
+                    video.play(url)
+                    shell.videoActive = true
+                }
             }
             f.muteVideo = { m -> video.muted = m }
             f.toggleVideo = { video.toggle() }

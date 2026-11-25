@@ -47,6 +47,14 @@ class VideoPlayer(ctx: Context) : TextureView.SurfaceTextureListener {
             mp?.let { applyPlaybackSpeed(it) }
         }
 
+    /** Extra zoom about centre. Video Clock pulls the fire back a little; other clips stay 1f. */
+    var zoom: Float = 1f
+        set(v) { field = v; applyTransform() }
+
+    private var calDx = 0f
+    private var calDy = 0f
+    private var calScale = 1f
+
     private val retry = Runnable {
         if (!wantPlay) return@Runnable
         url?.let { start(it) }
@@ -89,8 +97,14 @@ class VideoPlayer(ctx: Context) : TextureView.SurfaceTextureListener {
 
     /** Match the shell's screen calibration (scale about centre, then shift). */
     fun applyCalibration(dx: Float, dy: Float, scale: Float) {
+        calDx = dx; calDy = dy; calScale = scale
+        applyTransform()
+    }
+
+    private fun applyTransform() {
         val cx = view.width / 2f; val cy = view.height / 2f
-        view.setTransform(Matrix().apply { setScale(scale, scale, cx, cy); postTranslate(dx, dy) })
+        val s = calScale * zoom
+        view.setTransform(Matrix().apply { setScale(s, s, cx, cy); postTranslate(calDx, calDy) })
     }
 
     private fun applyPlaybackSpeed(player: MediaPlayer) {

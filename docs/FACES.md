@@ -32,8 +32,9 @@ with a temperature arc and rain ticks around the rim, sunrise and sunset, CPU an
 complications on every style, and the next calendar event below them.
 
 **Video Clock.** The same time and date over a muted loop streamed from the PC's media server
-(`media/fireplace.mp4` by default). The clip is centre-cropped to fill the circle behind a soft
-scrim and plays at 0.50× so the motion stays calm; the time and date are sized and lifted to sit in
+(`media/fireplace.mp4` by default). The clip is pulled back slightly (0.92×) so the fire fills a
+little less of the circle, then centre-cropped behind a soft scrim and played at 0.50× so the
+motion stays calm; the time and date are sized and lifted to sit in
 the middle of the circle. If the PC is off or the file is missing it falls back to a dark clock instead of a black
 screen, and it retries with backoff when the agent comes back. Long-press → **Video clip…** names a
 different file in the agent's `media` folder, no rebuild needed.

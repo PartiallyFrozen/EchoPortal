@@ -36,6 +36,7 @@ class VideoClockFace(ctx: Context) : Face(ctx) {
         set(value) {
             field = value
             value?.playbackSpeed = CLOCK_SPEED
+            value?.zoom = CLOCK_ZOOM
         }
 
     /** File inside the agent's media/ folder; the long-press menu changes it on the Spot. */
@@ -167,5 +168,8 @@ class VideoClockFace(ctx: Context) : Face(ctx) {
 
         /** Half speed keeps the fire calm and the loop unhurried. */
         const val CLOCK_SPEED = 0.50f
+
+        /** Pull the clip back slightly so the fire fills less of the circle. */
+        const val CLOCK_ZOOM = 0.92f
     }
 }
