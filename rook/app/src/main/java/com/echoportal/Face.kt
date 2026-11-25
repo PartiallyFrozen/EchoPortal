@@ -30,8 +30,9 @@ abstract class Face(val ctx: Context) {
     /** The visible page changed (also called on show with the current page). */
     open fun onPage(page: Int) {}
 
-    /** Set by the shell: ask for a looping video under the circle (null = none) / toggle pause. */
+    /** Set by the shell: ask for a looping video under the circle (null = none). */
     var requestVideo: (String?) -> Unit = {}
+    /** Pause/resume the current clip (ComfyUI video outputs use it). */
     var toggleVideo: () -> Unit = {}
     var muteVideo: (Boolean) -> Unit = {}
 

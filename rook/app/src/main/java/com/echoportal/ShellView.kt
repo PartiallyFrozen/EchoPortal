@@ -15,6 +15,7 @@ import android.view.animation.DecelerateInterpolator
 import com.echoportal.Draw.fmt
 import com.echoportal.Draw.label
 import org.json.JSONObject
+import java.time.LocalDate
 import java.time.LocalTime
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -95,6 +96,35 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
     var status = ""
         set(v) { field = v; invalidate() }
 
+    /** True while the hub is connected to the PC agent. Gates the "always on" behaviour. */
+    var pcOnline = false
+        set(v) { if (field == v) return; field = v; invalidate() }
+
+    // Wake-up light: an alarm fires on the PC, the shell wakes the screen and eases the backlight
+    // from near-black to the normal level over the configured number of minutes.
+    private var wakeSpanMs = 0L
+    private var wakeStartAt = 0L
+    private var wakeFrom = 0.02f
+    private var wakeTo = 0.8f
+    private val wakeTick = object : Runnable {
+        override fun run() {
+            if (wakeSpanMs <= 0L) return
+            val t = ((System.currentTimeMillis() - wakeStartAt).toFloat() / wakeSpanMs).coerceIn(0f, 1f)
+            val eased = t * t * (3f - 2f * t)          // smoothstep: dim longer, then brighten
+            host?.setBrightness(wakeFrom + (wakeTo - wakeFrom) * eased)
+            if (t >= 1f) {
+                wakeSpanMs = 0L
+                // Start the idle timer here: otherwise a 20-minute ramp leaves lastTouch 20 minutes
+                // old and the shell drops straight into ambient the moment it reaches full brightness.
+                lastTouch = System.currentTimeMillis()
+                host?.setBrightness(settings.brightness)
+                return
+            }
+            main.postDelayed(this, 2000)
+        }
+    }
+    private val ramping get() = wakeSpanMs > 0L
+
     var calDx = 0f; var calDy = 0f; var calScale = 1f
     /** True while a video surface is showing beneath; the shell clears a circle so it shows through. */
     var videoActive = false
@@ -127,14 +157,68 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
         main.post(ticker)
     }
 
+    /** Activity is going away: let the visible face release mic/video before the hub closes. */
+    fun pauseCurrentFace() {
+        if (faces.isNotEmpty()) faces[faceIdx.coerceIn(faces.indices)].onHide()
+        invalidate()
+    }
+
     fun onHubMessage(ch: String, data: JSONObject) {
+        val face = if (data.isNull("face")) null else data.optString("face").ifEmpty { null }
         if (ch == "notify") {
-            showBanner(data.optString("title"), data.optString("text"), data.optString("face", null), data.optLong("ttl", 8000))
+            showBanner(data.optString("title"), data.optString("text"), face, data.optLong("ttl", 8000))
             if (data.optBoolean("chime", true)) host?.chime()
             return
         }
+        if (ch == "timer" && data.optString("op") == "wake") {
+            startWakeRamp(data.optInt("minutes", 20))
+        }
+        // A Jarvis turn should take over the screen. Replies can also arrive from the HTTP API
+        // while the user is on another face; don't yank the display away while it is asleep.
+        if (ch == "assistant") {
+            // The server also routes by device, but the shell must not switch faces or show a
+            // banner for another Spot's turn (AssistantFace would otherwise ignore it too late).
+            val eventDevice = data.optString("device")
+            if (eventDevice.isNotEmpty() && settings.deviceId.isNotEmpty() && eventDevice != settings.deviceId) return
+            val op = data.optString("op")
+            if (op == "prompt" || op == "thinking" || op == "tool" || op == "confirm" || op == "reply" || op == "error") {
+                if (sleeping || ambient) {
+                    if (op == "reply" || op == "confirm" || op == "error")
+                        showBanner("Jarvis", data.optString("text", "assistant"), "assistant", 10000)
+                } else switchTo("assistant")
+            }
+        }
         if (ch == "weatherart" || ch == "bg") background.onEvent(ch, data)
         faces.forEach { if (ch in it.channels) it.onEvent(ch, data) }
+    }
+
+    /** Start a wake-up light: wake the screen and ramp the backlight over [minutes]. */
+    fun startWakeRamp(minutes: Int) {
+        val span = minutes.coerceIn(1, 120) * 60_000L
+        forcedSleep = false
+        // An alarm is a "good morning", not a 30-minute nap: do not go back to sleep when the
+        // ramp ends while the sleep schedule is still active.
+        if (inSleepWindow()) stayAwakeUntilMorning = true
+        lastTouch = System.currentTimeMillis()
+        wakeUntil = System.currentTimeMillis() + span + 10 * 60_000L
+        if (sleeping) exitSleep(keepDim = true)
+        if (ambient) wake()
+        main.removeCallbacks(wakeTick)
+        wakeStartAt = System.currentTimeMillis()
+        wakeSpanMs = span
+        wakeFrom = 0.02f
+        wakeTo = settings.brightness.coerceAtLeast(0.2f)
+        host?.setBrightness(wakeFrom)
+        main.postDelayed(wakeTick, 2000)
+        invalidate()
+    }
+
+    /** Touch (or another mode change) ends the ramp at the normal brightness. */
+    fun cancelWakeRamp() {
+        if (!ramping) return
+        wakeSpanMs = 0L
+        main.removeCallbacks(wakeTick)
+        host?.setBrightness(settings.brightness)
     }
 
     fun showBanner(title: String, text: String, faceId: String?, ttl: Long) {
@@ -167,32 +251,80 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
     }
 
     // ---- ambient ------------------------------------------------------------------------------
+    private fun minuteNow(): Int = LocalTime.now().let { it.hour * 60 + it.minute }
+    private fun isWeekdayNow(): Boolean = LocalDate.now().dayOfWeek.value <= 5
+
+    /** Minute-accurate window that may cross midnight. */
+    private fun inDailyWindow(now: Int, start: Int, end: Int): Boolean =
+        if (start == end) false else if (start < end) now in start until end else now >= start || now < end
+
     fun inSleepWindow(): Boolean {
         if (!settings.sleepEnabled) return false
-        val h = LocalTime.now().hour
-        val a = settings.sleepStart; val b = settings.sleepEnd
-        return if (a == b) false else if (a < b) h in a until b else (h >= a || h < b)
+        val now = minuteNow()
+        return if (isWeekdayNow())
+            inDailyWindow(now, settings.sleepWeekdayStart, settings.sleepWeekdayEnd)
+        else
+            inDailyWindow(now, settings.sleepWeekendStart, settings.sleepWeekendEnd)
     }
 
-    fun sleepUntilText(): String {
-        val e = settings.sleepEnd
-        return fmt("%d:00 %s", if (e % 12 == 0) 12 else e % 12, if (e < 12) "am" else "pm")
+    /** Weekday morning override: awake and undimmed even when the PC is offline. */
+    fun inForcedAwakeWindow(): Boolean = isWeekdayNow() &&
+            inDailyWindow(minuteNow(), settings.awakeWeekdayStart, settings.awakeWeekdayEnd)
+
+    /** Past the protected morning window, an offline PC means the Spot has no reason to stay up. */
+    private fun isPastMorningWindow(): Boolean {
+        val now = minuteNow()
+        return if (isWeekdayNow()) now >= settings.awakeWeekdayEnd else now >= settings.sleepWeekendEnd
     }
+
+    private fun clockTime(minute: Int): String {
+        val h24 = (minute / 60) % 24
+        val h12 = if (h24 % 12 == 0) 12 else h24 % 12
+        return fmt("%d:%02d %s", h12, minute % 60, if (h24 < 12) "am" else "pm")
+    }
+
+    private fun shortTime(minute: Int): String = clockTime(minute)
+        .replace(" ", "").replace("am", "a").replace("pm", "p")
+
+    private fun sleepEndMinute(): Int =
+        if (isWeekdayNow()) settings.sleepWeekdayEnd else settings.sleepWeekendEnd
+
+    fun sleepUntilText(): String = clockTime(sleepEndMinute())
+
+    fun sleepScheduleText(): String = fmt(
+        "off %s-%s weekdays, %s-%s weekends; on %s-%s weekdays",
+        clockTime(settings.sleepWeekdayStart), clockTime(settings.sleepWeekdayEnd),
+        clockTime(settings.sleepWeekendStart), clockTime(settings.sleepWeekendEnd),
+        clockTime(settings.awakeWeekdayStart), clockTime(settings.awakeWeekdayEnd))
 
     private fun tick() {
         val now = System.currentTimeMillis()
-        val wantSleep = forcedSleep || (inSleepWindow() && now > wakeUntil && !stayAwakeUntilMorning)
+        // "Always on" keeps the panel lit while the PC is connected. The weekday morning window
+        // forces it fully awake even if the PC is offline or the screen would idle-dim. Past that
+        // window, an offline PC sends it straight to sleep until something explicitly wakes it.
+        // An explicit "sleep now" still wins, as do touch wake and wake-up-light ramps.
+        val keepAwake = (settings.alwaysOn && pcOnline) || inForcedAwakeWindow()
+        val offlineAndLate = !pcOnline && isPastMorningWindow() &&
+                now > wakeUntil && !stayAwakeUntilMorning
+        val wantSleep = forcedSleep || offlineAndLate ||
+                (!keepAwake && inSleepWindow() && now > wakeUntil && !stayAwakeUntilMorning)
         if (wantSleep && !sleeping) enterSleep()
         if (!wantSleep && sleeping) exitSleep()
+        if (keepAwake && ambient) wake()
         if (!inSleepWindow()) stayAwakeUntilMorning = false
         if (sleeping) { banner = null; invalidate(); return }
         faces[faceIdx].onTick()
         if (ambient) {
             faces.firstOrNull { it.id == "clock" }?.onTick()
-        } else if (mode == Mode.FACE && settings.ambientEnabled) {
+        } else if (!keepAwake && !ramping && settings.ambientEnabled) {
             val idle = now - lastTouch
             val night = settings.nightMode && isNight()
-            if (idle > settings.idleMinutes * 60_000L || (night && idle > 60_000L)) enterAmbient()
+            if (idle > settings.idleMinutes * 60_000L || (night && idle > 60_000L)) {
+                // A launcher/quick sheet left open counts as idle too; close it first so the
+                // overlay cannot keep the panel bright all night.
+                if (mode != Mode.FACE) animateOverlay(open = false, launcher = mode == Mode.LAUNCHER)
+                enterAmbient()
+            }
         }
         banner?.let { if (now > it.until) banner = null }
         invalidate()
@@ -205,10 +337,11 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
     }
 
     /** Sleep immediately and stay asleep until the screen is touched. */
-    fun sleepNow() { forcedSleep = true; enterSleep() }
+    fun sleepNow() { cancelWakeRamp(); forcedSleep = true; enterSleep() }
 
     fun enterSleep() {
         if (sleeping) return
+        cancelWakeRamp()
         sleeping = true
         if (ambient) { ambient = false }
         faces[faceIdx].onHide()
@@ -217,11 +350,13 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
         invalidate()
     }
 
-    fun exitSleep() {
+    fun exitSleep(keepDim: Boolean = false) {
         if (!sleeping) return
         sleeping = false
         lastTouch = System.currentTimeMillis()
-        host?.setBrightness(settings.brightness)
+        // keepDim lets the wake ramp set the first (near-black) brightness without a full-brightness
+        // flash between this call and the ramp's first frame.
+        if (!keepDim) host?.setBrightness(settings.brightness)
         host?.onSleep(false)
         faces[faceIdx].onShow(); faces[faceIdx].onPage(page)
         invalidate()
@@ -236,17 +371,23 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
 
     fun enterAmbient() {
         if (ambient) return
+        cancelWakeRamp()
         ambient = true
         preAmbientFace = faceIdx
+        // Stop the video decoder (and any face timers that only make sense while visible): ambient
+        // draws the classic clock and would otherwise leave fireplace.mp4 looping behind black.
+        faces[faceIdx].onHide()
         host?.setBrightness(settings.ambientBrightness)
         invalidate()
     }
 
     fun wake() {
         if (!ambient) return
+        cancelWakeRamp()
         ambient = false
         lastTouch = System.currentTimeMillis()
         host?.setBrightness(settings.brightness)
+        faces[faceIdx].onShow(); faces[faceIdx].onPage(page)
         invalidate()
     }
 
@@ -261,6 +402,7 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastTouch = System.currentTimeMillis()
+                if (ramping) cancelWakeRamp()
                 if (sleeping) { wakeTemporarily(); gesture = Gesture.NONE; return true }   // first touch only wakes
                 if (ambient) { wake(); gesture = Gesture.NONE; return true }   // first touch only wakes
                 downX = x; downY = y; downT = lastTouch; lastX = x; lastY = y; downRawY = e.y
@@ -625,14 +767,14 @@ class ShellView(context: Context, val faces: List<Face>, private val settings: S
             label(c, glyph, bx, by + 7f * f, 20f * f, if (on) Color.BLACK else Draw.textColor)
             val cap = when (name) {
                 "ambient" -> "dim now"; "autoambient" -> "auto ${settings.idleMinutes}m"
-                "sleepsched" -> if (inSleepWindow() && !stayAwakeUntilMorning) "stay awake" else if (settings.sleepEnabled) "off ${hh(settings.sleepStart)}–${hh(settings.sleepEnd)}" else "sched off"
+                "sleepsched" -> if (inSleepWindow() && !stayAwakeUntilMorning) "stay awake" else if (settings.sleepEnabled)
+                    "off ${shortTime(settings.sleepWeekdayStart)}-${shortTime(settings.sleepWeekdayEnd)} / ${shortTime(settings.sleepWeekendStart)}-${shortTime(settings.sleepWeekendEnd)}"
+                else "sched off"
                 else -> "menu" }
             label(c, cap, bx, by + r * 0.1f + 14f * f, 9f * f, Draw.mutedColor)
         }
         c.restore()
     }
-
-    private fun hh(h: Int) = fmt("%d%s", if (h % 12 == 0) 12 else h % 12, if (h < 12) "a" else "p")
 
     private fun drawBanner(c: Canvas, b: Banner, cx: Float, cy: Float, r: Float, f: Float) {
         val top = cy - r * 0.92f; val bot = cy - r * 0.5f

@@ -28,7 +28,7 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
     override val id = "clock"
     override val name = "Clock"
     override val color = Color.parseColor("#FFD54F")
-    override val channels = setOf("stats", "ticker", "comfy")
+    override val channels = setOf("stats", "ticker", "comfy", "calendar")
 
     /** Styles are pages; page 0 is the original EchoPortal look. The chosen page is remembered by the shell. */
     private val styles: List<ClockStyle> = listOf(ClassicStyle(), BoldStyle(), PixelStyle(), NeonStyle())
@@ -45,6 +45,9 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
     private var btcChange: Double? = null
     private var btcCurrency = "USD"
     private var jobsToday: Int? = null
+
+    private data class CalEvent(val start: Long, val end: Long, val allDay: Boolean, val title: String)
+    private var calEvents: List<CalEvent> = emptyList()
 
     override fun onEvent(channel: String, data: JSONObject) {
         when (channel) {
@@ -64,7 +67,31 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
                 }
             }
             "comfy" -> jobsToday = data.optInt("jobs_today")
+            "calendar" -> {
+                val arr = data.optJSONArray("events") ?: return
+                val list = ArrayList<CalEvent>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    list.add(CalEvent(o.optLong("start"), o.optLong("end"), o.optBoolean("all_day"), o.optString("title")))
+                }
+                calEvents = list.sortedBy { it.start }
+            }
         }
+    }
+
+    /** The next event that has not ended yet, with a short "3:00 PM Title" label. */
+    private fun nextEventLabel(): String? {
+        val now = System.currentTimeMillis()
+        val e = calEvents.firstOrNull { it.end >= now } ?: return null
+        val t = java.time.Instant.ofEpochMilli(e.start).atZone(java.time.ZoneId.systemDefault())
+        val today = java.time.LocalDate.now()
+        val prefix = when (t.toLocalDate()) {
+            today -> ""
+            today.plusDays(1) -> "tmrw "
+            else -> t.format(DateTimeFormatter.ofPattern("EEE ", Locale.US))
+        }
+        val whenText = if (e.allDay) "all day" else t.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
+        return "$prefix$whenText  ·  ${e.title.take(28)}"
     }
 
     private fun snapshot(now: LocalDateTime): ClockData {
@@ -82,6 +109,9 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
 
     @Volatile private var weather: Weather? = null
     @Volatile private var fetching = false
+    @Volatile private var lastAttempt = 0L
+    // Independent of `weather` so a failed first fetch backs off instead of retrying every tick.
+    @Volatile private var retryDelayMs = 0L
     private var lastError: String? = null
     private val http = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(8, TimeUnit.SECONDS).build()
     private val timeFmt = DateTimeFormatter.ofPattern("h:mm", Locale.US)
@@ -96,7 +126,10 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
     private fun refreshIfStale() {
         val w = weather
         if (fetching) return
-        if (w != null && System.currentTimeMillis() - w.fetched < 15 * 60_000) return
+        val now = System.currentTimeMillis()
+        if (w != null && now - w.fetched < 15 * 60_000) return
+        if (now - lastAttempt < retryDelayMs) return
+        lastAttempt = now
         fetching = true
         Thread {
             try {
@@ -107,11 +140,16 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
                 val body = http.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string() ?: "" }
                 weather = parse(JSONObject(body))
                 lastError = null
+                retryDelayMs = 0
             } catch (e: Exception) {
                 Log.w("EchoPortal.Clock", "weather fetch failed: ${e.message}")
                 lastError = e.message
-                // retry sooner than the normal 15 min
-                weather = weather?.copy(fetched = System.currentTimeMillis() - 13 * 60_000)
+                // 1 min, then 2, then every 5 min until the radio is back.
+                retryDelayMs = when {
+                    retryDelayMs < 60_000L -> 60_000L
+                    retryDelayMs < 120_000L -> 120_000L
+                    else -> 300_000L
+                }
             } finally {
                 fetching = false
                 invalidate()
@@ -163,6 +201,7 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
             label(c, now.format(timeFmt), cx, cy + 4f * f, 96f * f, Draw.mutedColor, bold = true)
             label(c, now.format(dateFmt), cx, cy + 40f * f, 16f * f, Draw.gridColor)
             if (w != null) label(c, fmt("%.0f°  %s", w.temp, describe(w.code)), cx, cy + 72f * f, 18f * f, Draw.gridColor)
+            nextEventLabel()?.let { label(c, it.take(40), cx, cy + 104f * f, 12f * f, Draw.gridColor) }
             return
         }
 
@@ -191,6 +230,7 @@ class ClockFace(ctx: Context, private val lat: Double, private val lon: Double, 
             label(c, fmt("CPU %s   ·   GPU %s %s", cpuPct?.let { fmt("%.0f%%", it) } ?: "--", gpuUtil?.let { fmt("%.0f%%", it) } ?: "--", gpuTemp?.let { "$it°C" } ?: ""),
                 cx, cy + 142f * f, 12f * f, Draw.cpuColor)
         }
+        nextEventLabel()?.let { label(c, it.take(38), cx, cy + 162f * f, 11f * f, Draw.netColor) }
     }
 
     /** Temperature line + rain ticks along an arc: hours 0..12 map to angles 210°..510° (7 o'clock round to 5). */

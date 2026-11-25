@@ -38,6 +38,9 @@ jobs:
       - name: Tests
         run: pytest -q
 
+      - name: Eval case schema (all categories)
+        run: python evals/check_cases.py
+
   android:
     name: Shell (build)
     runs-on: ubuntu-latest

@@ -1,0 +1,12 @@
+{
+  "domain": "jarvis_conversation",
+  "name": "Jarvis Conversation",
+  "codeowners": ["@local"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/local/echoportal/blob/main/docs/ASSISTANT.md",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "1.0.0"
+}

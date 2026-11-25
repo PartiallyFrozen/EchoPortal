@@ -161,12 +161,14 @@ class GpuPage : Page {
         }
         if (g != null) {
             val y1 = cy + 92f * f
-            label(c, fmt("%d°C", g.tempC ?: 0), cx - 120f * f, y1, 26f * f, if ((g.tempC ?: 0) >= 80) Draw.hotColor else Draw.textColor, bold = true)
+            label(c, if (g.tempC != null) fmt("%d°C", g.tempC) else "--", cx - 120f * f, y1, 26f * f, if ((g.tempC ?: 0) >= 80) Draw.hotColor else Draw.textColor, bold = true)
             label(c, "temp", cx - 120f * f, y1 + 16f * f, 11f * f, Draw.mutedColor)
-            label(c, fmt("%.0f W", g.powerW ?: 0.0), cx - 40f * f, y1, 26f * f, bold = true)
-            label(c, fmt("of %d W", g.powerLimitW ?: 0), cx - 40f * f, y1 + 16f * f, 11f * f, Draw.mutedColor)
-            label(c, fmt("%d", g.clockSm ?: 0), cx + 45f * f, y1, 26f * f, bold = true)
-            label(c, fmt("MHz / %d", g.clockSmMax ?: 0), cx + 45f * f, y1 + 16f * f, 11f * f, Draw.mutedColor)
+            label(c, if (g.powerW != null) fmt("%.0f W", g.powerW) else "--", cx - 40f * f, y1, 26f * f, bold = true)
+            // AMD's ADL feed has no board power limit; say "power" instead of "of 0 W".
+            label(c, if ((g.powerLimitW ?: 0) > 0) fmt("of %d W", g.powerLimitW!!) else "power", cx - 40f * f, y1 + 16f * f, 11f * f, Draw.mutedColor)
+            label(c, if (g.clockSm != null) fmt("%d", g.clockSm) else "--", cx + 45f * f, y1, 26f * f, bold = true)
+            // Likewise there is no max-clock field, so "MHz core" rather than "MHz / 0".
+            label(c, if ((g.clockSmMax ?: 0) > 0) fmt("MHz / %d", g.clockSmMax!!) else "MHz core", cx + 45f * f, y1 + 16f * f, 11f * f, Draw.mutedColor)
             label(c, if (g.fanPct != null) fmt("%d%%", g.fanPct) else "--", cx + 125f * f, y1, 26f * f, bold = true)
             label(c, "fan", cx + 125f * f, y1 + 16f * f, 11f * f, Draw.mutedColor)
             // who holds the VRAM (top process) + compute engine

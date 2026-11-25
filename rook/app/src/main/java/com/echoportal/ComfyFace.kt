@@ -67,7 +67,13 @@ class ComfyFace(ctx: Context) : Face(ctx) {
         if (wasRunning && !running) lastDoneAt = System.currentTimeMillis()
         lastUpdate = System.currentTimeMillis()
         val v = if (data.isNull("last_video")) null else data.optString("last_video").ifEmpty { null }
-        if (v != videoUrl) { videoUrl = v; videoName = data.optString("last_video_name", ""); if (curPage == 1) syncVideo() }
+        if (v != videoUrl) {
+            videoUrl = v
+            videoName = data.optString("last_video_name", "")
+            // A new output URL while the media page is open must replace the old decoder.
+            if (videoShowing && curPage == 1) { requestVideo(null); videoShowing = false }
+            if (curPage == 1) syncVideo()
+        }
         val b64 = if (data.isNull("last_image")) null else data.optString("last_image")
         android.util.Log.i("EchoPortal.Comfy", "event: running=$running up=$up image=${b64?.length ?: 0} video=${videoUrl != null} name=${data.optString("last_image_name")}")
         if (!b64.isNullOrEmpty()) {

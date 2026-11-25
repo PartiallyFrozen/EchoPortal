@@ -39,16 +39,30 @@ class VoiceFace(ctx: Context) : Face(ctx) {
     /** Set by the shell: sends a raw binary frame to the hub. */
     var sendBytes: (ByteArray) -> Boolean = { false }
 
+    /**
+     * Set by the activity: true just before AudioRecord opens the mic and false once it is
+     * released, so the always-listening wake word can hand the microphone over cleanly.
+     */
+    var onMicBusy: (Boolean) -> Unit = {}
+
+    /** Fired once on the rising edge of detected speech; used to barge in on reply audio. */
+    var onVoiceDetected: (() -> Unit)? = null
+
+    /** Set by the activity when the on-device "Jarvis" wake word is listening. */
+    var wakeWordOn = false
+
     private enum class State { IDLE, LISTEN, THINK, REVIEW, DONE, ERROR }
     private var state = State.IDLE
-    private var targetClaude = false
+    // 0 = focused window, 1 = Claude Code, 2 = Jarvis assistant
+    private var targetMode = 0
+    private val assistantMode get() = targetMode == 2
     private var transcript = ""
     private var targetWindow = ""
     private var message = ""
     private var level = 0f            // 0..1 smoothed mic level
     private var listenStart = 0L
-    private var lastSpeech = 0L
-    private var spoke = false
+    @Volatile private var lastSpeech = 0L
+    @Volatile private var spoke = false
     private var rec: AudioRecord? = null
     private var recThread: Thread? = null
     @Volatile private var recording = false
@@ -61,13 +75,21 @@ class VoiceFace(ctx: Context) : Face(ctx) {
     private val speechThreshold = 0.0025f   // the Spot mic array is ~30 dB quieter than a phone mic
 
     // ---- lifecycle ------------------------------------------------------------------------
-    override fun onHide() { stopListening(send = false); if (state == State.LISTEN) state = State.IDLE }
+    override fun onHide() {
+        stopListening(send = false)
+        if (state == State.LISTEN) state = State.IDLE
+        setAssistantMode(false)   // a one-shot Jarvis turn must not turn the next dictation into one
+    }
 
     override fun onTick() {
-        if (state == State.DONE && System.currentTimeMillis() - doneAt > 2500) { state = State.IDLE; invalidate() }
-        if (state == State.ERROR && System.currentTimeMillis() - doneAt > 4000) { state = State.IDLE; invalidate() }
+        val now = System.currentTimeMillis()
+        if (state == State.DONE && now - doneAt > (if (message.isNotEmpty()) 4500 else 2500)) { state = State.IDLE; message = ""; invalidate() }
+        if (state == State.ERROR && now - doneAt > 4000) { state = State.IDLE; invalidate() }
+        // A dropped reply must not leave the spinner up forever.
+        if (state == State.THINK && now - thinkAt > 60_000) fail("no reply from PC")
     }
     private var doneAt = 0L
+    private var thinkAt = 0L
 
     // ---- hub events ----------------------------------------------------------------------
     override fun onEvent(channel: String, data: JSONObject) {
@@ -75,9 +97,25 @@ class VoiceFace(ctx: Context) : Face(ctx) {
             "transcript" -> {
                 transcript = data.optString("text").trim()
                 targetWindow = data.optString("target")
+                message = ""
                 if (transcript.isEmpty()) { fail("didn't catch that") } else { state = State.REVIEW }
             }
-            "sent" -> { targetWindow = data.optString("window"); doneAt = System.currentTimeMillis(); state = State.DONE }
+            "sent" -> { targetWindow = data.optString("window"); message = ""; doneAt = System.currentTimeMillis(); state = State.DONE }
+            "command" -> {
+                // The PC recognised a timer/alarm phrase and did it; show its confirmation.
+                transcript = ""
+                targetWindow = data.optString("target")
+                message = data.optString("text", "done")
+                doneAt = System.currentTimeMillis()
+                state = State.DONE
+            }
+            "assistant" -> {
+                // The PC answered through Jarvis; the shell switches to the Assistant face.
+                transcript = ""
+                message = data.optString("text", "asked Jarvis")
+                doneAt = System.currentTimeMillis()
+                state = State.DONE
+            }
             "focus" -> targetWindow = data.optString("window")
             "error" -> fail(data.optString("text", "error"))
         }
@@ -110,27 +148,42 @@ class VoiceFace(ctx: Context) : Face(ctx) {
         ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun startListening() {
-        if (!hasMicPermission()) { fail("mic permission missing"); return }
+        if (recording) return
+        // Porcupine owns the mic while it listens; make it let go before AudioRecord opens it.
+        onMicBusy(true)
+        if (!hasMicPermission()) { onMicBusy(false); fail("mic permission missing"); return }
         val minBuf = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val r = try {
             AudioRecord(audioSource(), sampleRate, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, sampleRate))   // 0.5 s buffer
-        } catch (e: Exception) { fail("mic: ${e.message}"); return }
-        if (r.state != AudioRecord.STATE_INITIALIZED) { fail("mic init failed"); r.release(); return }
+        } catch (e: Exception) { onMicBusy(false); fail("mic: ${e.message}"); return }
+        if (r.state != AudioRecord.STATE_INITIALIZED) { onMicBusy(false); fail("mic init failed"); r.release(); return }
+        if (!op("start") { it.put("rate", sampleRate) }) {
+            Log.w(TAG, "hub is down; not starting the mic")
+            try { r.release() } catch (_: Exception) {}
+            onMicBusy(false)
+            fail("PC offline")
+            return
+        }
         rec = r
         recording = true
         spoke = false
         level = 0f
+        message = ""
         listenStart = System.currentTimeMillis(); lastSpeech = listenStart
         state = State.LISTEN
-        val ok = op("start") { it.put("rate", sampleRate) }
-        Log.i(TAG, "start listening, hub send ok=$ok")
         r.startRecording()
         recThread = Thread({
             val chunk = ByteArray(640)   // 20 ms
             var peak = 0f; var frames = 0
             while (recording) {
-                val n = r.read(chunk, 0, chunk.size)
+                val n = try {
+                    r.read(chunk, 0, chunk.size)
+                } catch (e: Exception) {
+                    Log.w(TAG, "mic read failed: ${e.message}")
+                    main.post { stopListening(send = false) }
+                    break
+                }
                 if (n <= 0) continue
                 // RMS for the meter + VAD
                 var acc = 0.0
@@ -139,9 +192,17 @@ class VoiceFace(ctx: Context) : Face(ctx) {
                 val now = System.currentTimeMillis()
                 if (rms > peak) peak = rms
                 if (++frames % 50 == 0) { Log.i(TAG, "listening: ${frames / 50}s peak rms=%.4f spoke=$spoke".format(peak)); peak = 0f }
+                // VAD decisions run on the recorder thread so silence detection cannot depend on
+                // when the main thread gets around to a posted UI update.
+                if (rms > speechThreshold) {
+                    if (!spoke) {
+                        spoke = true
+                        main.post { onVoiceDetected?.invoke() }
+                    }
+                    lastSpeech = now
+                }
                 main.post {
                     level = level * 0.6f + rms * 0.4f * 60f
-                    if (rms > speechThreshold) { spoke = true; lastSpeech = now }
                     invalidate()
                 }
                 sendBytes(if (n == chunk.size) chunk else chunk.copyOf(n))
@@ -160,35 +221,30 @@ class VoiceFace(ctx: Context) : Face(ctx) {
         recording = false
         try { rec?.stop() } catch (_: Exception) {}
         rec?.release(); rec = null
+        onMicBusy(false)
         if (send) {
             if (!spoke) Log.i(TAG, "stop: VAD heard nothing, sending anyway")
             state = State.THINK
-            op("stop")
+            thinkAt = System.currentTimeMillis()
+            if (!op("stop") { it.put("assistant", assistantMode) }) fail("PC offline")
         } else op("cancel")
         invalidate()
     }
 
-    // ---- demo (screen recordings): fake a listen -> transcript -> sent sequence, no PC involved ----
-    fun demo(text: String) {
-        if (text == "send") {
-            targetWindow = if (targetClaude) "Claude" else "Google Gemini - Google Chrome"
-            doneAt = System.currentTimeMillis(); state = State.DONE; invalidate(); return
-        }
-        state = State.LISTEN; spoke = false; level = 0f
-        listenStart = System.currentTimeMillis(); lastSpeech = listenStart
-        targetWindow = "Google Gemini - Google Chrome"
-        val start = listenStart
-        val anim = object : Runnable {
-            override fun run() {
-                if (state != State.LISTEN) return
-                val t = (System.currentTimeMillis() - start) / 1000.0
-                if (t > 0.6) spoke = true
-                level = (0.25 + 0.6 * kotlin.math.abs(kotlin.math.sin(t * 7.0)) * kotlin.math.abs(kotlin.math.sin(t * 1.7))).toFloat()
-                invalidate()
-                if (t < 2.8) main.postDelayed(this, 40) else { transcript = text; state = State.REVIEW; invalidate() }
-            }
-        }
-        main.post(anim)
+    /**
+     * Wake word fired: start listening without a tap. A pending review is left alone so an
+     * accidental detection cannot throw away the transcript on screen.
+     */
+    fun startFromWakeWord(): Boolean {
+        if (recording || state == State.LISTEN || state == State.THINK || state == State.REVIEW) return false
+        startListening()
+        return state == State.LISTEN
+    }
+
+    /** Called when the on-device wake word fires: the next utterance becomes an assistant turn. */
+    fun setAssistantMode(on: Boolean) {
+        targetMode = if (on) 2 else 0
+        invalidate()
     }
 
     // ---- touch --------------------------------------------------------------------------------
@@ -196,7 +252,7 @@ class VoiceFace(ctx: Context) : Face(ctx) {
         val f = r / 240f
         when (state) {
             State.IDLE, State.DONE, State.ERROR -> {
-                if (y > cy + 120f * f) { targetClaude = !targetClaude; invalidate() }   // target pill
+                if (y > cy + 120f * f) { targetMode = (targetMode + 1) % 3; invalidate() }   // target pill
                 else startListening()
             }
             State.LISTEN -> stopListening(send = true)
@@ -213,7 +269,9 @@ class VoiceFace(ctx: Context) : Face(ctx) {
 
     private fun sendText(enter: Boolean) {
         state = State.THINK; message = "typing…"
-        op("send") { it.put("text", transcript).put("enter", enter).put("target", if (targetClaude) "claude" else "focused") }
+        thinkAt = System.currentTimeMillis()
+        if (!op("send") { it.put("text", transcript).put("enter", enter).put("target", if (targetMode == 1) "claude" else "focused") })
+            fail("PC offline")
         invalidate()
     }
 
@@ -224,9 +282,9 @@ class VoiceFace(ctx: Context) : Face(ctx) {
         when (state) {
             State.IDLE, State.DONE, State.ERROR -> {
                 StubFace.mic(c, cx, cy - 40f * f, 110f * f, if (state == State.ERROR) Draw.hotColor else color)
-                label(c, when (state) { State.DONE -> "sent ✓"; State.ERROR -> message; else -> "tap to talk" },
+                label(c, when (state) { State.DONE -> message.ifEmpty { "sent ✓" }; State.ERROR -> message; else -> if (wakeWordOn) "say \"Jarvis\" or tap" else "tap to talk" },
                     cx, cy + 56f * f, 18f * f, if (state == State.ERROR) Draw.hotColor else Draw.textColor, bold = state != State.IDLE)
-                if (state == State.DONE && targetWindow.isNotEmpty()) label(c, "→ " + targetWindow.take(36), cx, cy + 78f * f, 12f * f, Draw.mutedColor)
+                if (state == State.DONE && message.isEmpty() && targetWindow.isNotEmpty()) label(c, "→ " + targetWindow.take(36), cx, cy + 78f * f, 12f * f, Draw.mutedColor)
                 drawTargetPill(c, cx, cy, r, f)
             }
             State.LISTEN -> {
@@ -252,7 +310,7 @@ class VoiceFace(ctx: Context) : Face(ctx) {
                 invalidate()
             }
             State.REVIEW -> {
-                label(c, "→ " + (if (targetClaude) "Claude Code" else targetWindow.ifEmpty { "focused window" }).take(38), cx, cy - 150f * f, 12f * f, Draw.mutedColor)
+                label(c, "→ " + (if (targetMode == 1) "Claude Code" else targetWindow.ifEmpty { "focused window" }).take(38), cx, cy - 150f * f, 12f * f, Draw.mutedColor)
                 drawWrapped(c, transcript, cx, cy - 118f * f, r, f)
                 val by = cy + 118f * f
                 button(c, cx - 120f * f, by, 32f * f, "✕", "discard", Draw.dimColor, Draw.textColor, f)
@@ -263,11 +321,15 @@ class VoiceFace(ctx: Context) : Face(ctx) {
     }
 
     private fun drawTargetPill(c: Canvas, cx: Float, cy: Float, r: Float, f: Float) {
-        val txt = if (targetClaude) "→ Claude Code" else "→ focused window"
+        val txt = when (targetMode) {
+            1 -> "→ Claude Code"
+            2 -> "→ Jarvis"
+            else -> "→ focused window"
+        }
         val w = 150f * f; val y = cy + 130f * f
-        Draw.fill.color = if (targetClaude) color else Draw.dimColor; Draw.fill.alpha = 255
+        Draw.fill.color = if (targetMode == 0) Draw.dimColor else color; Draw.fill.alpha = 255
         c.drawRoundRect(cx - w / 2, y, cx + w / 2, y + 28f * f, 14f * f, 14f * f, Draw.fill)
-        label(c, txt, cx, y + 19f * f, 12f * f, if (targetClaude) Color.BLACK else Draw.textColor, bold = true)
+        label(c, txt, cx, y + 19f * f, 12f * f, if (targetMode == 0) Draw.textColor else Color.BLACK, bold = true)
         label(c, "tap to switch target", cx, y + 44f * f, 9f * f, Draw.gridColor)
     }
 
@@ -316,7 +378,11 @@ class VoiceFace(ctx: Context) : Face(ctx) {
     override fun drawIcon(c: Canvas, x: Float, y: Float, size: Float, selected: Boolean) =
         StubFace.mic(c, x, y, size, if (selected) color else Draw.mutedColor)
 
-    override fun preview() = if (targetClaude) "tap to talk → Claude Code" else "tap to talk → focused window"
+    override fun preview() = when (targetMode) {
+        1 -> "tap to talk → Claude Code"
+        2 -> "tap to talk → Jarvis"
+        else -> "tap to talk → focused window"
+    }
 
     companion object { private const val TAG = "EchoPortal.Voice" }
 }

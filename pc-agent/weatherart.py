@@ -21,10 +21,9 @@ import aiohttp
 
 import config
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = config.data_path("weatherart", "library")
 BUNDLED_LIBRARY = config.bundled_path("weatherart", "library")
-TEMPLATE = os.path.join(HERE, "demo_prompt.json")
+TEMPLATE = config.bundled_path("demo_prompt.json")
 LAT, LON, TZ = config.location()     # set in config.json; the face stays quiet until it is
 PROMPT_NODE = "57:27"      # CLIPTextEncode (positive) in the saved workflow
 OUT_SIZE = 480
@@ -218,7 +217,8 @@ class WeatherArt:
 async def render(base: str, prompt: str) -> bytes | None:
     """Render one prompt through the saved workflow and return a square OUT_SIZE JPEG."""
     from PIL import Image
-    tpl = json.load(open(TEMPLATE, encoding="utf-8"))
+    with open(TEMPLATE, encoding="utf-8") as f:
+        tpl = json.load(f)
     tpl[PROMPT_NODE]["inputs"]["text"] = prompt
     for n in tpl.values():
         ins = n.get("inputs", {})

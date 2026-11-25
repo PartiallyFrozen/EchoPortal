@@ -18,6 +18,8 @@ AGENT = os.path.join(ROOT, "pc-agent")
 
 datas = [
     (os.path.join(ROOT, "packaging", "config.example.json"), "packaging"),
+    # Piper neural TTS: standalone runtime + British male model, ~85 MB, no Python packages.
+    (os.path.join(ROOT, "packaging", "piper"), "piper"),
     (os.path.join(AGENT, "demo_prompt.json"), "."),
     (os.path.join(AGENT, "weatherart", "library"), os.path.join("weatherart", "library")),
 ]
@@ -25,8 +27,23 @@ datas = [(src, dst) for src, dst in datas if os.path.exists(src)]
 
 hiddenimports = [
     "win32pdh", "win32api", "win32con", "win32gui", "win32process", "win32clipboard",
+    # Jarvis TTS, robot and vision/search imports are lazy, so PyInstaller cannot see them on its own.
+    "pythoncom", "win32com.client", "paho.mqtt.client",
+    "search_providers", "screenshot", "mcp_client", "briefing", "sabres_schedule",
     "pynvml", "tkinter", "tkinter.ttk", "tkinter.filedialog", "tkinter.messagebox",
-] + collect_submodules("pystray")
+    "dateutil", "tzdata",
+]
+
+
+def _no_tests(name: str) -> bool:
+    """collect_submodules would otherwise drag every package's test suite into the exe."""
+    return not ({"test", "tests"} & set(name.split(".")))
+
+
+hiddenimports += collect_submodules("pystray") \
+    + collect_submodules("icalendar", filter=_no_tests) \
+    + collect_submodules("recurring_ical_events", filter=_no_tests) \
+    + collect_submodules("zeroconf")
 
 excludes = [
     "faster_whisper", "ctranslate2", "torch", "onnxruntime", "av",

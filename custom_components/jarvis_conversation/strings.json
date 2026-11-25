@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Jarvis",
+        "description": "Point Home Assistant at the EchoPortal PC agent (http://<pc-ip>:8766).",
+        "data": {
+          "url": "Agent URL",
+          "token": "API token",
+          "timeout": "Timeout in seconds"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Enter a full http:// or https:// URL.",
+      "invalid_auth": "That API token was rejected.",
+      "cannot_connect": "Could not reach the agent. Is it running and on the same LAN?",
+      "not_ready": "The agent answered, but it is not ready yet."
+    },
+    "abort": {
+      "already_configured": "Jarvis is already connected."
+    }
+  }
+}

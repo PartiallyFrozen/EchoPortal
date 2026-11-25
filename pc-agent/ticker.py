@@ -22,10 +22,9 @@ import aiohttp
 
 import config as agent_config
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = agent_config.data_path("tickers.json")
 DEFAULT = {"crypto": ["BTC", "ETH"], "stocks": ["NVDA", "AAPL", "MSFT"], "currency": "USD",
-           "stock_interval": 10, "cycle_seconds": 8, "interval": 60}
+           "stock_interval": 10, "cycle_seconds": 8}
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EchoPortalAgent/1.0"}
 COINBASE_WS = "wss://ws-feed.exchange.coinbase.com"
 
@@ -65,7 +64,6 @@ class TickerWatcher:
         self.error = None
         self._sparks = {}          # sym -> (fetched_at, [floats])
         self._coin_id_cache = dict(COIN_IDS)
-        self._dirty = asyncio.Event() if False else None
         self._last_sent = 0.0
         self._pending = False
         self._generation = 0       # bumps when the config changes; workers exit and restart

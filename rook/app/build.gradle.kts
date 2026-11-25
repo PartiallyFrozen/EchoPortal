@@ -5,6 +5,7 @@ plugins {
 android {
     namespace = "com.echoportal"
     compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.echoportal"
@@ -20,4 +21,6 @@ android {
 
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // On-device "Jarvis" wake word; the built-in keyword needs a free Picovoice AccessKey.
+    implementation("ai.picovoice:porcupine-android:4.0.2")
 }
